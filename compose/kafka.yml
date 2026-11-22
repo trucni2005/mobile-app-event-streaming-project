@@ -179,10 +179,13 @@ services:
     image: ghcr.io/kafbat/kafka-ui:v1.2.0
     container_name: kafka-ui
     restart: unless-stopped
+    # Có đăng nhập nên bind theo BIND_ADDR (127.0.0.1 hoặc IP interface VPN).
     ports:
-      - "127.0.0.1:8086:8080"
+      - "${BIND_ADDR:-127.0.0.1}:8086:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: local
+      # Chỉ xem: không tạo/xoá topic, không produce message từ UI.
+      KAFKA_CLUSTERS_0_READONLY: "true"
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka1:9092,kafka2:9092,kafka3:9092
       KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
       KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME: debezium

@@ -13,6 +13,17 @@ postgres-up: postgres-secret
 postgres-roles:
 	docker compose exec postgres /docker-entrypoint-initdb.d/02-roles.sh
 
+# Đồng bộ password superuser tooling-db theo TOOLING_DB_PASSWORD trên DB đã khởi tạo.
+# Recreate container trước để nó nhận env mới, sau đó recreate các service dùng DB.
+tooling-db-roles:
+	docker compose up -d tooling-db
+	docker compose exec tooling-db /docker-entrypoint-initdb.d/02-sync-password.sh
+	docker compose up -d --force-recreate metabase iceberg-rest
+
+# Chặn port publish ra ngoài 127.0.0.1 / BIND_ADDR (Docker bỏ qua ufw).
+check-exposure:
+	docker compose config --format json | python3 scripts/check_exposure.py --allow "$(BIND_ADDR)"
+
 # Môi trường Python cho test/lint trên host (cần gói python3-venv).
 # .venv/.installed đánh dấu đã cài xong (không touch .venv/bin/python vì là symlink tới python hệ thống).
 venv: .venv/.installed
@@ -58,18 +69,22 @@ simulator-up:
 minio-up:
 	docker compose up -d minio minio-init iceberg-rest
 
+# Submit mọi job trong CONFIG_JOBS (spark/spark_builder.py); chạy foreground tới khi job dừng.
+# Job đọc cấu hình qua env, nên spark-up và spark-submit phải truyền cùng một bộ biến.
+SPARK_SUBMIT = docker compose exec \
+	-e ENV=$(ENV) \
+	-e AWS_ACCESS_KEY_ID=$(AWS_ACCESS_KEY_ID) \
+	-e AWS_SECRET_ACCESS_KEY=$(AWS_SECRET_ACCESS_KEY) \
+	-e S3_ENDPOINT=$(S3_ENDPOINT) \
+	-e ICEBERG_REST_URI=$(ICEBERG_REST_URI) \
+	-e AWS_REGION=$(AWS_REGION) \
+	spark-master /opt/spark/bin/spark-submit \
+	--master spark://spark-master:7077 \
+	/app/spark_builder.py
+
 spark-up:
 	docker compose up -d spark-master spark-worker-1 spark-worker-2
-	docker compose exec \
-		-e ENV=$(ENV) \
-		-e AWS_ACCESS_KEY_ID=$(AWS_ACCESS_KEY_ID) \
-		-e AWS_SECRET_ACCESS_KEY=$(AWS_SECRET_ACCESS_KEY) \
-		-e S3_ENDPOINT=$(S3_ENDPOINT) \
-		-e ICEBERG_REST_URI=$(ICEBERG_REST_URI) \
-		-e AWS_REGION=$(AWS_REGION) \
-		spark-master /opt/spark/bin/spark-submit \
-		--master spark://spark-master:7077 \
-		/app/spark_builder.py
+	$(SPARK_SUBMIT)
 
 trino-up:
 	docker compose up -d trino
@@ -93,14 +108,7 @@ ps:
 	docker compose ps
 
 spark-submit:
-	docker compose exec \
-		-e ENV=$(ENV) \
-		-e AWS_ACCESS_KEY_ID=$(AWS_ACCESS_KEY_ID) \
-		-e AWS_SECRET_ACCESS_KEY=$(AWS_SECRET_ACCESS_KEY) \
-		-e S3_ENDPOINT=$(S3_ENDPOINT) \
-		spark-master /opt/spark/bin/spark-submit \
-		--master spark://spark-master:7077 \
-		/app/spark_builder.py
+	$(SPARK_SUBMIT)
 
 connector-status:
 	curl http://localhost:8083/connectors/streaming-connector/status

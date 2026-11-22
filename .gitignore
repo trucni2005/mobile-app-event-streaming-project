@@ -11,3 +11,9 @@ lakehouse/
 .ipynb_checkpoints/
 secrets/
 .venv/
+# Terraform: state chứa thông tin hạ tầng, tfvars chứa email/giá trị riêng.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+crash.log

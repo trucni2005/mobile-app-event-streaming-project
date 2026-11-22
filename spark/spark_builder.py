@@ -19,6 +19,7 @@ def create_spark_session(app_name: str, catalog_name: str = "iceberg") -> SparkS
 
     return SparkSession.builder \
         .appName(app_name) \
+        .config("spark.ui.killEnabled", "false") \
         .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") \
         .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions") \
         .config("spark.driver.extraClassPath", "/opt/spark/jars/*") \

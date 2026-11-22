@@ -1,0 +1,37 @@
+#cloud-config
+# Chạy 1 lần lúc EC2 boot lần đầu: cài Docker Engine + compose plugin và các tool
+# mà Makefile cần. Log: /var/log/cloud-init-output.log trên host.
+package_update: true
+package_upgrade: true
+
+packages:
+  - ca-certificates
+  - curl
+  - git
+  - make
+  - jq
+  - openssl
+  - python3-venv
+  - unattended-upgrades
+
+write_files:
+  # Log rotate mặc định cho mọi container; live-restore để restart dockerd
+  # (vd. khi upgrade) không làm chết container.
+  - path: /etc/docker/daemon.json
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": { "max-size": "50m", "max-file": "5" },
+        "live-restore": true
+      }
+
+runcmd:
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  - chmod a+r /etc/apt/keyrings/docker.asc
+  - echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list
+  - apt-get update
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  - usermod -aG docker ubuntu
+  # Thư mục deploy: compose files, .env và secrets/ của production nằm ở đây.
+  - install -d -o ubuntu -g ubuntu -m 0750 /opt/mobile-events

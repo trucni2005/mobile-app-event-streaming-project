@@ -1,0 +1,7 @@
+# Allowlist build context của image simulator (BuildKit dùng file này thay cho
+# .dockerignore ở gốc vì nằm cạnh Dockerfile). .env, secrets/, *-volumes/... không rời host.
+*
+!requirements.txt
+!simulator/
+**/__pycache__
+**/*.pyc
