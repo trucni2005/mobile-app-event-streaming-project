@@ -1,0 +1,4 @@
+# Context thật của từng image nằm ở docker/<image>/Dockerfile.dockerignore (BuildKit
+# ưu tiên file cạnh Dockerfile). File này chỉ là chốt chặn: builder nào không đọc file
+# riêng (legacy builder) thì context rỗng → build fail, thay vì gửi .env/secrets/ đi.
+*

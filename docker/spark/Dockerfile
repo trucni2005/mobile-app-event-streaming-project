@@ -1,24 +1,13 @@
-# ---- simulator ----
-FROM python:3.11-slim AS simulator
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-
-COPY simulator/main.py .
-
-EXPOSE 8000
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
-
-# ---- spark ----
-FROM apache/spark:4.0.0-scala2.13-java17-python3-ubuntu AS spark
+# Spark (master/worker/history server + code job). Build từ gốc repo:
+#   docker build -f docker/spark/Dockerfile .
+# Context chỉ gồm những gì liệt kê trong Dockerfile.dockerignore bên cạnh.
+FROM apache/spark:4.0.0-scala2.13-java17-python3-ubuntu
 
 USER root
 
 RUN pip install pyyaml requests
 
-COPY jars.txt /tmp/jars.txt
+COPY docker/spark/jars.txt /tmp/jars.txt
 
 RUN cd /opt/spark/jars && \
     grep -v '^$' /tmp/jars.txt | while read jar; do \

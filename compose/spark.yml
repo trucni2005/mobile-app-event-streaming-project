@@ -2,8 +2,7 @@ services:
   spark-master:
     build:
       context: .
-      dockerfile: Dockerfile
-      target: spark
+      dockerfile: docker/spark/Dockerfile
     container_name: spark-master
     hostname: spark-master
     command: >
@@ -11,21 +10,24 @@ services:
       org.apache.spark.deploy.master.Master
     networks:
       - kafka-net
+    # Spark standalone không có auth: ai tới được RPC 7077 là submit được code,
+    # nên 7077 không publish (spark-submit chạy bên trong container qua `make spark-submit`).
+    # UI chỉ bind 127.0.0.1, truy cập từ xa bằng SSH tunnel qua VPN.
     ports:
-      - "7070:8080"
-      - "7077:7077"
-      - "4040:4040"
+      - "127.0.0.1:7070:8080"
+      - "127.0.0.1:4040:4040"
     environment:
       HOME: /tmp
       KAFKA_CONNECTOR_PACKAGE: org.apache.spark:spark-sql-kafka-0-10_2.13:4.0.0
+      # Tắt nút kill app/driver trên master UI.
+      SPARK_MASTER_OPTS: "-Dspark.ui.killEnabled=false"
     volumes:
       - ./spark:/app
 
   spark-worker-1:
     build:
       context: .
-      dockerfile: Dockerfile
-      target: spark
+      dockerfile: docker/spark/Dockerfile
     hostname: spark-worker-1
     command: >
       /opt/spark/bin/spark-class
@@ -34,7 +36,7 @@ services:
     depends_on:
       - spark-master
     ports:
-      - "8091:8091"
+      - "127.0.0.1:8091:8091"
     networks:
       - kafka-net
     environment:
@@ -48,8 +50,7 @@ services:
   spark-worker-2:
     build:
       context: .
-      dockerfile: Dockerfile
-      target: spark
+      dockerfile: docker/spark/Dockerfile
     hostname: spark-worker-2
     command: >
       /opt/spark/bin/spark-class
@@ -58,7 +59,7 @@ services:
     depends_on:
       - spark-master
     ports:
-      - "8092:8092"
+      - "127.0.0.1:8092:8092"
     networks:
       - kafka-net
     environment:
@@ -72,8 +73,7 @@ services:
   spark-history-server:
     build:
       context: .
-      dockerfile: Dockerfile
-      target: spark
+      dockerfile: docker/spark/Dockerfile
     container_name: spark-history-server
     hostname: spark-history-server
     command: >
@@ -83,7 +83,7 @@ services:
       SPARK_HISTORY_OPTS: >-
         -Dspark.history.fs.logDirectory=/data/spark-events
     ports:
-      - "18080:18080"
+      - "127.0.0.1:18080:18080"
     networks:
       - kafka-net
     volumes:

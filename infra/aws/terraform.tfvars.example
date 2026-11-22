@@ -1,0 +1,11 @@
+# Copy thành terraform.tfvars (đã gitignore) rồi sửa.
+
+# Backend platform: t3.medium. Full stack: m6i.xlarge.
+instance_type = "t3.medium"
+
+# Để "stopped" khi không dùng: chỉ trả tiền ổ đĩa.
+instance_state = "running"
+
+# Email nhận cảnh báo chi phí; để trống thì không tạo budget.
+budget_email       = ""
+budget_monthly_usd = 50

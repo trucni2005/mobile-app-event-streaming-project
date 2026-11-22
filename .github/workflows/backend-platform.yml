@@ -1,5 +1,8 @@
 # Backend (OLTP): postgres + simulator. Chỉ chạy khi đổi file thuộc backend
-# hoặc file dùng chung (Dockerfile, requirements, compose entrypoint, .env.example).
+# hoặc file dùng chung (requirements, compose entrypoint, .env.example).
+#
+# CI: lint → unit test + integration (postgres thật trong runner) + build image.
+# CD: push vào main và mọi job xanh → đẩy image simulator lên GHCR.
 name: backend-platform
 
 on:
@@ -11,18 +14,33 @@ on:
       - config/postgres/**
       - ddl/postgresql/**
       - simulator/**
+      - docker/simulator/**
       - tests/postgres/**
       - tests/simulator/**
-      - Dockerfile
       - requirements.txt
       - pyproject.toml
       - docker-compose.yml
       - .env.example
       - Makefile
+      - scripts/check_exposure.py
       - .github/workflows/backend-platform.yml
   pull_request:
     branches: [main]
     paths: *backend-paths
+  # Chạy tay (vd. publish lại image từ main) trong tab Actions.
+  workflow_dispatch:
+
+# Mặc định github token chỉ đọc; job nào cần thêm quyền thì tự khai báo.
+permissions:
+  contents: read
+
+# PR push commit mới thì huỷ run cũ; main thì để chạy hết, không huỷ giữa lúc publish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}/simulator
 
 jobs:
   lint:
@@ -46,15 +64,79 @@ jobs:
           python-version: "3.11"
           cache: "pip"
       - run: pip install -r requirements.txt
-      # tests/postgres tự skip khi không có DB đang chạy.
-      - run: pytest tests/simulator tests/postgres -v -rs
+      # tests/postgres chạy ở job integration với DB thật.
+      - run: pytest tests/simulator -v -rs
+
+  # Dựng postgres thật ngay trong runner (máy tạm, port chỉ bind 127.0.0.1) bằng
+  # đúng make target dùng ở local. Giá trị trong .env.example đủ dùng vì DB bị huỷ
+  # cùng runner. REQUIRE_DB=1: không kết nối được DB thì fail, không skip.
+  integration:
+    needs: lint
+    runs-on: ubuntu-latest
+    env:
+      REQUIRE_DB: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - run: cp .env.example .env
+      - run: make postgres-up
+      - run: make test-postgres
+      - name: Postgres logs
+        if: failure()
+        run: docker compose logs postgres
 
   docker-build:
     needs: lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build --target simulator -t simulator .
+      - uses: docker/setup-buildx-action@v3
+      # Chỉ build để kiểm tra; cache layer lưu vào GHA để job publish dùng lại.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/simulator/Dockerfile
+          push: false
+          cache-from: type=gha,scope=simulator
+          cache-to: type=gha,mode=max,scope=simulator
       # .env bị gitignore nên runner không có; dùng giá trị mẫu chỉ để validate compose.
       - run: cp .env.example .env
       - run: docker compose config -q
+      # Không service nào được publish port ra ngoài 127.0.0.1.
+      - run: docker compose config --format json | python3 scripts/check_exposure.py
+
+  # CD: chưa có server nên "deploy" = đẩy image lên GHCR. Tag sha-<commit> để
+  # server sau này pull đúng bản đã qua CI; latest luôn trỏ bản mới nhất của main.
+  publish:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [test, integration, docker-build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=sha
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/simulator/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=simulator

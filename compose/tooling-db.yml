@@ -2,16 +2,17 @@ services:
   tooling-db:
     image: postgres:16
     container_name: tooling-db
-    ports:
-      - "5435:5435"
+    # Chứa DB của Metabase và Iceberg catalog: không publish ra host, chỉ truy cập
+    # trong kafka-net. Debug: docker compose exec tooling-db psql -U admin -d metabase
     environment:
       POSTGRES_DB: metabase
       POSTGRES_USER: admin
-      POSTGRES_PASSWORD: admin
+      # Chỉ áp dụng lúc initdb; DB đã có thì chạy `make tooling-db-roles` để đồng bộ.
+      POSTGRES_PASSWORD: ${TOOLING_DB_PASSWORD:?TOOLING_DB_PASSWORD must be set}
       PGPORT: 5435
     volumes:
       - ./tooling-db-volumes:/var/lib/postgresql/data
-      - ./ddl/tooling/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./ddl/tooling:/docker-entrypoint-initdb.d:ro
     networks:
       - kafka-net
 

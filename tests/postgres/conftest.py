@@ -28,6 +28,15 @@ def load_dotenv(path):
 
 load_dotenv(REPO_ROOT / ".env")
 
+# CI đặt REQUIRE_DB=1: thiếu DB/secret/credentials là lỗi, không được skip cho xanh.
+REQUIRE_DB = os.getenv("REQUIRE_DB") == "1"
+
+
+def skip_or_fail(reason):
+    if REQUIRE_DB:
+        pytest.fail(reason)
+    pytest.skip(reason)
+
 
 def connect_params(user, password):
     return {
@@ -50,7 +59,7 @@ def superuser_password():
 def superuser_params():
     password = superuser_password()
     if password is None:
-        pytest.skip("Thiếu secrets/pg_superuser_password (chạy make postgres-up)")
+        skip_or_fail("Thiếu secrets/pg_superuser_password (chạy make postgres-up)")
     params = connect_params(os.getenv("PG_SUPERUSER", "postgres"), password)
     try:
         psycopg2.connect(**params).close()
@@ -61,14 +70,14 @@ def superuser_params():
                 "Password superuser trong DB không khớp secrets/pg_superuser_password "
                 f"(chạy make postgres-roles để đồng bộ): {exc}"
             )
-        pytest.skip(f"Không kết nối được postgres tại {params['host']}:{params['port']}: {exc}")
+        skip_or_fail(f"Không kết nối được postgres tại {params['host']}:{params['port']}: {exc}")
     return params
 
 
 def env_credentials(user_var, password_var):
     user, password = os.getenv(user_var), os.getenv(password_var)
     if not user or not password:
-        pytest.skip(f"Thiếu {user_var}/{password_var} trong .env")
+        skip_or_fail(f"Thiếu {user_var}/{password_var} trong .env")
     return connect_params(user, password)
 
 

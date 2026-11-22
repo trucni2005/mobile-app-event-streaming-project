@@ -4,11 +4,20 @@
 # đang có bằng `make postgres-roles` để đồng bộ password/quyền theo .env.
 set -euo pipefail
 
+# Lúc initdb, docker-entrypoint đã đọc POSTGRES_PASSWORD_FILE vào POSTGRES_PASSWORD
+# rồi unset biến _FILE; chạy qua `make postgres-roles` (docker exec) thì chỉ có _FILE.
+su_password="${POSTGRES_PASSWORD:-$(cat "${POSTGRES_PASSWORD_FILE:?}")}"
+# Password rỗng thì ALTER ROLE sẽ xoá password superuser: dừng luôn.
+if [ -z "$su_password" ]; then
+  echo "02-roles.sh: không đọc được password superuser" >&2
+  exit 1
+fi
+
 psql -v ON_ERROR_STOP=1 \
   --username "$POSTGRES_USER" \
   --dbname "$POSTGRES_DB" \
   -v su_user="$POSTGRES_USER" \
-  -v su_password="$(cat "$POSTGRES_PASSWORD_FILE")" \
+  -v su_password="$su_password" \
   -v app_user="$PG_APP_USER" \
   -v app_password="$PG_APP_PASSWORD" \
   -v dbz_user="$PG_DEBEZIUM_USER" \
